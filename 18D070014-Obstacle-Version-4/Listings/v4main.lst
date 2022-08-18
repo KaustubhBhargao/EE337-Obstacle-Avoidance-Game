@@ -1,0 +1,270 @@
+C51 COMPILER V9.60.0.0   V4MAIN                                                            04/07/2021 02:45:31 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE V4MAIN
+OBJECT MODULE PLACED IN .\Objects\v4main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE v4main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\v4
+                    -main.lst) TABS(2) OBJECT(.\Objects\v4main.obj)
+
+line level    source
+
+   1          #include <at89c5131.h>
+   2          #include "lcd.h"    //Header file with LCD interfacing functions
+   3          #include "serial.c" //C file with UART interfacing functions
+   4          #include "obstacle.c" //C file for obstacle generation
+   5          
+   6          //Global Variables
+   7          int dino = 1;              //Detemines current row of the Dinosaur. Takes values 1, 2.
+   8          int state = 3;             //Variable to signify change of obstacle. Takes values from 1 to 3
+   9          int LFSR = 1;              //Initial non-zero value of the LFSR register = #001B (seed)
+  10          int temp_obstacle[6] = 0;  //To store the current obstacle
+  11          int row1[16] = 0;          //To store elements of first row of LCD
+  12          int row2[16] = 0;          //Seconds row of LCD
+  13          int var_T0 = 31;           //For timer zero ISR. 31 will lead to 1 seconds delay (24MHz => Overflow every 
+             -32512.5 us)
+  14          int score = 0;             //Initialise score
+  15          //int check = 0;             //Variable to signigfy occurance of collision. 0=>no collision
+  16          int max_score= 0;          //Initialise max score
+  17          //code char line1[] = "*****************************\r\n";
+  18          code char line2[] = "***Obstacle Avoidance Game***\r\n";
+  19          //code char line3[] = "*****************************\r\n";
+  20          code char line4[] = "Incorrect Command\r\n";
+  21          code char space[] = " ";
+  22          code char D[] = "D";
+  23          code char dline1[] = "Score: ";
+  24          code char dline2[] = "High Score: ";
+  25          code char star[] = "*";
+  26          code char temp_string[5]={0,0,0,0,'\0'};
+  27          
+  28          /*********************************
+  29            Check for collision with current set of values
+  30            If collision present, call collide(), Return
+  31            If nor present, do nothing, return
+  32            If occured,
+  33            Called when collision occurs
+  34            Clear LCD
+  35            Display Score
+  36            Update Max Score
+  37            DELAY 3s
+  38            Initiate Dinosaur Position
+  39            Start sending obstacles
+  40            exit
+  41          *********************************/
+  42          void collision_check(void)
+  43          {
+  44   1        if((dino==1 && row1[2]==1) || (dino==2 && row2[2]==1))
+  45   1        {
+  46   2          if(score > max_score){max_score = score;}
+  47   2          lcd_cmd(0x01); //Clear the Display
+  48   2          msdelay(50);
+  49   2          lcd_cmd(0x80); //Curson on First row 1st Column
+  50   2          lcd_write_string(dline1);
+  51   2          lcd_cmd(0x87); //Cursor on First row 8th column
+  52   2          int_to_string(score, temp_string);
+  53   2          lcd_write_string(temp_string);
+C51 COMPILER V9.60.0.0   V4MAIN                                                            04/07/2021 02:45:31 PAGE 2   
+
+  54   2          
+  55   2          lcd_cmd(0x0C0);
+  56   2          lcd_write_string(dline2);
+  57   2          lcd_cmd(0x0CC); //Cursor on Second row 12th column
+  58   2          int_to_string(max_score, temp_string);
+  59   2          lcd_write_string(temp_string);
+  60   2          
+  61   2          
+  62   2          msdelay(3000); 
+  63   2          lcd_cmd(0x01); //Clear the Display
+  64   2          dino = 1; //reset dinosaur postion
+  65   2          state = 3; //rest state of obstacle
+  66   2          score = 0; //reset score
+  67   2          row1[16] = 0;          //To store elements of first row of LCD
+  68   2          row2[16] = 0;          //Seconds row of LCD
+  69   2        }
+  70   1      }
+  71          
+  72          
+  73          //Main Function
+  74          void main(void)
+  75          {
+  76   1        unsigned char ch=0;
+  77   1        
+  78   1        //START TIMER T0 Here
+  79   1        EA = 1;                    //Enable interrupts
+  80   1        ET0 = 1;                   //Enable intrrupts from Timer0
+  81   1        TH0 = 0x00;
+  82   1        TL0 = 0x00;
+  83   1        TR0 = 1;                    //Start the timer
+  84   1        
+  85   1        //Call initialization functions
+  86   1        lcd_init();
+  87   1        uart_init();
+  88   1        
+  89   1        //These strings will be printed in terminal software
+  90   1        //transmit_string(line1);
+  91   1        transmit_string(line2);
+  92   1        //transmit_string(line3);
+  93   1        /*transmit_string("Press q to move UP\r\n");
+  94   1        transmit_string("Press a to move DOWN\r\n");*/
+  95   1        
+  96   1        //Display the Dinosaur
+  97   1        lcd_cmd(0x82);
+  98   1        lcd_write_string(D);
+  99   1        
+ 100   1        while(1)
+ 101   1        {
+ 102   2          //Receive a character
+ 103   2          ch = receive_char();
+ 104   2          
+ 105   2          /********************************
+ 106   2          //The Obstacles keep arriving
+ 107   2          //INITIATE the position of the Dinosaur
+ 108   2          //UPDATE the position based on the character received
+ 109   2          ********************************/
+ 110   2          switch(ch)
+ 111   2          {
+ 112   3            case 'q': //moveUP(); //Calling the function
+ 113   3                      dino=1;
+ 114   3                      lcd_cmd(0x0C2);          //Second row 3rd column
+ 115   3                      lcd_write_string(space);   // Clear the initail D
+C51 COMPILER V9.60.0.0   V4MAIN                                                            04/07/2021 02:45:31 PAGE 3   
+
+ 116   3                      //msdelay(50);
+ 117   3                      lcd_cmd(0x82);           //First row 3rd Column
+ 118   3                      lcd_write_string(D);   // Write the new D
+ 119   3                      //msdelay(50);
+ 120   3                      break;
+ 121   3            case 'a': //moveDOWN(); //Calling the function
+ 122   3                      dino=2;
+ 123   3                      lcd_cmd(0x82);           //First row 3rd column
+ 124   3                      lcd_write_string(space);   // Clear the initail D
+ 125   3                      //msdelay(50);
+ 126   3                      lcd_cmd(0x0C2);          //Second row 3rd Column
+ 127   3                      lcd_write_string(D);   // Write the new D
+ 128   3                      //msdelay(50);
+ 129   3                      break;
+ 130   3            default: transmit_string(line4);
+ 131   3                      break;
+ 132   3          }
+ 133   2          msdelay(100);
+ 134   2        }//While loop ends here
+ 135   1      }//Main function ends here
+ 136          
+ 137          
+ 138          void T0_ISR(void) interrupt 1     //Pass all the required arguments 
+ 139          {
+ 140   1        TR0 = 0; //Stop the Timer
+ 141   1        TF0 = 0; //Clear overflow flag
+ 142   1        
+ 143   1        if(var_T0!=0)
+ 144   1        {
+ 145   2          var_T0--;
+ 146   2        }
+ 147   1        else //Enter after 1 second
+ 148   1        {
+ 149   2          unsigned int m; //will be used later, can define only at the start
+ 150   2          if(state==3) //Call LFSR_next()
+ 151   2          {
+ 152   3            unsigned int i;
+ 153   3            //temp_obstacle = LFSR_next(&LFSR, temp_obstacle);//Find next obstacle and store it in temp_obstacle
+ 154   3            LFSR_next(&LFSR, temp_obstacle); //Will load the next obstacle Array in temp_obstacle
+ 155   3            for(i=0; i<15; i++)//Update the matrix, Shift Left
+ 156   3            {
+ 157   4              row1[i] = row1[i+1];
+ 158   4              row2[i] = row2[i+1];
+ 159   4            }
+ 160   3            row1[15] = temp_obstacle[0]; //Update the last elements (New entries)
+ 161   3            row2[15] = temp_obstacle[3];
+ 162   3            state = 1;
+ 163   3          }
+ 164   2          else if(state==1)
+ 165   2          {
+ 166   3            unsigned int j;
+ 167   3            for(j=0; j<15; j++)//Update the matrix, Shift Left
+ 168   3            {
+ 169   4              row1[j] = row1[j+1];
+ 170   4              row2[j] = row2[j+1];
+ 171   4            }
+ 172   3            row1[15] = temp_obstacle[1]; //Update the last elements (New entries)
+ 173   3            row2[15] = temp_obstacle[4];
+ 174   3            state++;
+ 175   3          }
+ 176   2          else
+ 177   2          {
+C51 COMPILER V9.60.0.0   V4MAIN                                                            04/07/2021 02:45:31 PAGE 4   
+
+ 178   3            unsigned int k;
+ 179   3            for(k=0; k<15; k++)//Update the matrix, Shift Left
+ 180   3            {
+ 181   4              row1[k] = row1[k+1];
+ 182   4              row2[k] = row2[k+1];
+ 183   4            }
+ 184   3            row1[15] = temp_obstacle[2]; //Update the last elements (New entries)
+ 185   3            row2[15] = temp_obstacle[5];
+ 186   3            state++;
+ 187   3          }
+ 188   2          
+ 189   2          //Update Score Here, i.e. score++
+ 190   2          score++;
+ 191   2          
+ 192   2          //Update the Display here
+ 193   2          //RESOLVE the ISSUE of BLINKING!!!!
+ 194   2          for(m=0; m<16; m++)
+ 195   2          {
+ 196   3            
+ 197   3              lcd_cmd(0x80+m); //Place the cusror in First row (m+1)th column
+ 198   3              if(row1[m]==0)
+ 199   3              {
+ 200   4                lcd_write_string(space); //empty " "
+ 201   4              }
+ 202   3              else
+ 203   3              {
+ 204   4                lcd_write_string(star);
+ 205   4              }
+ 206   3              lcd_cmd(0x0C0+m); //Place the cursor in Second row (m+1)th column
+ 207   3              if(row2[m]==0)
+ 208   3              {
+ 209   4                lcd_write_string(space); //empty " "
+ 210   4              }
+ 211   3              else
+ 212   3              {
+ 213   4                lcd_write_string(star);
+ 214   4              }
+ 215   3          }
+ 216   2          //Dinosaur will be vanished, show it again
+ 217   2          if(dino==1)
+ 218   2          {
+ 219   3            lcd_cmd(0x82); //Cursor in First row 3rd column //D may not be in the firts row
+ 220   3            lcd_write_string(D);
+ 221   3          }
+ 222   2          else
+ 223   2          {
+ 224   3            lcd_cmd(0x0C2); //Cursor in First row 3rd column //D may not be in the firts row
+ 225   3            lcd_write_string(D);
+ 226   3          }
+ 227   2          
+ 228   2          //Check for Collision
+ 229   2          collision_check();
+ 230   2          
+ 231   2          var_T0 = 31; //Restore the value
+ 232   2        }
+ 233   1        //Restart T0 HERE
+ 234   1          TH0 = 0x00;
+ 235   1          TL0 = 0x00;
+ 236   1          TR0 = 1; //Start the timer
+ 237   1      }
+
+
+C51 COMPILER V9.60.0.0   V4MAIN                                                            04/07/2021 02:45:31 PAGE 5   
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1774    ----
+   CONSTANT SIZE    =     84    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     88      22
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
